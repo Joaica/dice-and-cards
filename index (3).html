@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DICE AND NUMBER CARDS | JOAICA PONCE</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@700&family=Noto+Sans+TC:wght@700&display=swap" rel="stylesheet">
+
+    <style>
+        body { margin: 0; background-color: #010105; color: white; overflow: hidden; font-family: 'Orbitron', sans-serif; }
+        .font-digital { font-family: 'JetBrains Mono', monospace; }
+        .font-chinese { font-family: 'Noto Sans TC', sans-serif; }
+
+        .game-bg { 
+            background: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), 
+                        url('https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&q=80&w=2048');
+            background-size: cover;
+            background-position: center;
+        }
+
+        /* Straight Line Card Layout */
+        .cards-container {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .card-item {
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .card-item:hover {
+            transform: translateY(-10px);
+            filter: brightness(1.2);
+        }
+
+        .robot-glow {
+            filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.5));
+            animation: pulse 2s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { opacity: 0.8; transform: scale(1); }
+            to { opacity: 1; transform: scale(1.05); }
+        }
+
+        .cyber-btn {
+            clip-path: polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%);
+            transition: all 0.2s;
+        }
+
+        /* Prize Stand */
+        .prize-stand {
+            background: rgba(34, 211, 238, 0.03);
+            border: 1px solid rgba(34, 211, 238, 0.2);
+            backdrop-filter: blur(8px);
+        }
+
+        .prize-slot {
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(34, 211, 238, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- Improved Audio Engine ---
+        const SFX = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+            },
+            play(freq, type, dur, vol) {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + dur);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + dur);
+            }
+        };
+
+        const PAYOUTS = { 2:30, 3:15, 4:10, 5:8, 6:5, 7:4, 8:5, 9:8, 10:10, 11:15, 12:30 };
+        const PRIZES = ["🤖", "👾", "🛰️", "🚀", "🦾", "🛸", "🛡️", "🔋", "🪐", "🌠"];
+
+        const App = () => {
+            const [view, setView] = useState('splash');
+            const [wallet, setWallet] = useState(1000);
+            const [dice, setDice] = useState([1, 1]);
+            const [rolling, setRolling] = useState(false);
+            const [bets, setBets] = useState([]);
+            const [activeChip, setActiveChip] = useState(50);
+            const [collection, setCollection] = useState([]);
+
+            const handleRoll = () => {
+                if (bets.length === 0 || rolling) return;
+                SFX.init();
+                setRolling(true);
+                
+                const interval = setInterval(() => {
+                    setDice([Math.floor(Math.random()*6)+1, Math.floor(Math.random()*6)+1]);
+                    SFX.play(150, 'square', 0.05, 0.02);
+                }, 80);
+
+                setTimeout(() => {
+                    clearInterval(interval);
+                    const final = [Math.floor(Math.random()*6)+1, Math.floor(Math.random()*6)+1];
+                    const sum = final[0] + final[1];
+                    setDice(final);
+                    
+                    const win = bets.find(b => b.val === sum);
+                    if (win) {
+                        setWallet(prev => prev + (win.amt * PAYOUTS[sum]));
+                        setCollection(prev => [PRIZES[Math.floor(Math.random()*PRIZES.length)], ...prev].slice(0, 10));
+                        SFX.play(500, 'sine', 0.8, 0.1);
+                    } else {
+                        SFX.play(100, 'sawtooth', 0.4, 0.08);
+                    }
+                    setRolling(false);
+                    setBets([]);
+                }, 1600);
+            };
+
+            const placeBet = (val) => {
+                SFX.init();
+                if (rolling || wallet < activeChip) return;
+                SFX.play(800, 'sine', 0.1, 0.05);
+                setWallet(w => w - activeChip);
+                setBets(prev => {
+                    const existing = prev.find(b => b.val === val);
+                    if (existing) return prev.map(b => b.val === val ? { ...b, amt: b.amt + activeChip } : b);
+                    return [...prev, { val, amt: activeChip }];
+                });
+            };
+
+            if (view === 'splash') {
+                return (
+                    <div className="h-screen flex flex-col items-center justify-center game-bg">
+                        <div className="p-16 border border-cyan-500/30 bg-black/60 rounded-3xl text-center backdrop-blur-md">
+                            <h1 className="text-5xl font-black mb-2 tracking-tighter text-white">DICE AND NUMBER CARDS</h1>
+                            <h2 className="font-chinese text-2xl text-cyan-400 mb-12 tracking-[0.4em]">宋喬莉_ JOAICA PONCE</h2>
+                            <button onClick={() => { SFX.init(); setView('game'); }} 
+                                    className="bg-white text-black font-black px-16 py-5 rounded-sm hover:bg-cyan-400 transition-colors tracking-widest">
+                                INITIALIZE SYSTEM
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="h-screen game-bg relative flex flex-col">
+                    {/* Header */}
+                    <div className="p-6 flex justify-between items-start z-10">
+                        <div>
+                            <div className="font-chinese text-cyan-400 font-bold text-2xl">宋喬莉_ JOAICA PONCE</div>
+                            <div className="font-digital text-[10px] text-cyan-800 tracking-[0.5em]">DICE_SYSTEM_V5_ACTIVE</div>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Available Credits</div>
+                            <div className="text-4xl font-black italic text-white font-digital">${wallet}</div>
+                        </div>
+                    </div>
+
+                    {/* Left: Robot & Message */}
+                    <div className="absolute left-6 top-1/2 -translate-y-1/2 flex items-center gap-4 z-10">
+                        <div className="w-20 h-32 border-2 border-red-500 rounded p-2 robot-glow bg-black/40">
+                            <div className="w-full h-full border border-red-500/30 flex flex-col items-center justify-center">
+                                <div className="w-10 h-10 rounded-full border-2 border-red-500 flex items-center justify-center">
+                                    <div className="w-4 h-4 bg-red-600 rounded-full animate-pulse shadow-[0_0_10px_red]"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-black/90 border-l-4 border-red-600 p-3 w-48 shadow-2xl">
+                            <p className="text-[10px] text-red-500 font-black mb-1 tracking-widest uppercase">System Message</p>
+                            <p className="text-[11px] leading-tight text-white font-digital uppercase">
+                                CHOOSE THE NUMBER YOU WANT TO WIN, THEN WAIT FOR THE DICE TO ROLL, WHETHER YOU WIN OR LOSE.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Right: Vault */}
+                    <div className="absolute right-6 top-1/2 -translate-y-1/2">
+                        <div className="prize-stand p-3 rounded">
+                            <div className="text-[9px] text-cyan-400 font-black text-center mb-2">VAULT</div>
+                            <div className="grid grid-cols-2 gap-2">
+                                {[...Array(10)].map((_, i) => (
+                                    <div key={i} className="prize-slot">{collection[i] || ""}</div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Center: Dice and Straight Cards */}
+                    <div className="flex-1 flex flex-col items-center justify-center -mt-12">
+                        <div className="flex gap-8 mb-10">
+                            {dice.map((d, i) => (
+                                <div key={i} className="w-24 h-24 bg-black border-2 border-white/20 rounded-xl flex items-center justify-center shadow-2xl">
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[...Array(9)].map((_, p) => {
+                                            const pips = [[],[4],[0,8],[0,4,8],[0,2,6,8],[0,2,4,6,8],[0,2,3,5,6,8]][d];
+                                            return <div key={p} className={`w-3.5 h-3.5 rounded-full ${pips.includes(p) ? 'bg-white shadow-[0_0_8px_white]' : 'opacity-0'}`} />
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Smaller Straight Numbers 2-12 */}
+                        <div className="cards-container">
+                            {[2,3,4,5,6,7,8,9,10,11,12].map((v) => {
+                                const bet = bets.find(b => b.val === v);
+                                return (
+                                    <div key={v} onClick={() => placeBet(v)} className="card-item">
+                                        <div className={`w-14 h-20 rounded-lg border-2 flex flex-col items-center justify-center transition-all ${bet ? 'border-cyan-400 bg-cyan-400/30 shadow-[0_0_15px_cyan]' : 'border-white/10 bg-black/80'}`}>
+                                            <span className="text-[8px] text-cyan-500 font-bold">x{PAYOUTS[v]}</span>
+                                            <span className="text-2xl font-black text-white">{v}</span>
+                                            {bet && <div className="absolute -bottom-2 bg-orange-500 text-black text-[9px] px-1 font-black rounded shadow-lg">${bet.amt}</div>}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Lowered Compact Console */}
+                    <div className="bg-black/95 border-t border-white/5 p-4 z-20">
+                        <div className="max-w-6xl mx-auto flex items-center justify-between">
+                            <div className="flex flex-col gap-1">
+                                <span className="text-[9px] text-cyan-400 font-bold tracking-widest">STAKE VALUE</span>
+                                <div className="flex gap-2">
+                                    {[10, 50, 100].map(val => (
+                                        <button key={val} onClick={() => { SFX.init(); SFX.play(400, 'sine', 0.1, 0.05); setActiveChip(val); }}
+                                                className={`px-6 py-2 text-sm font-black transition-all ${activeChip === val ? 'bg-cyan-500 text-black' : 'border border-cyan-500/30 text-cyan-500'}`}>
+                                            ${val}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col items-center">
+                                <span className="text-[9px] text-orange-400 font-bold uppercase">Staked</span>
+                                <div className="text-2xl font-digital font-bold text-orange-500">
+                                    ${bets.reduce((a,b)=>a+b.amt,0)}
+                                </div>
+                                <button onClick={() => setBets([])} className="text-[8px] text-gray-500 hover:text-white uppercase mt-1">Clear</button>
+                            </div>
+
+                            <button onClick={handleRoll} disabled={rolling || bets.length === 0}
+                                    className={`px-12 py-4 rounded-sm font-black text-xl tracking-widest transition-all ${rolling || bets.length === 0 ? 'bg-gray-800 text-gray-600' : 'bg-white text-black hover:bg-cyan-400'}`}>
+                                {rolling ? "ROLLING..." : "EXECUTE ROLL"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
